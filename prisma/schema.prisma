@@ -1,0 +1,272 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  APPROVED
+  CONVERTED
+  EXPIRED
+}
+
+enum ServiceFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  ONE_TIME
+  DEEP_CLEAN
+}
+
+enum OccupancyType {
+  SEASONAL_EMPTY
+  COUPLE
+  FAMILY
+  LARGE_FAMILY
+  VACATION_RENTAL
+}
+
+enum FlooringType {
+  MOSTLY_TILE
+  MOSTLY_HARDWOOD
+  MOSTLY_CARPET
+  LUXURY_MIXED
+}
+
+enum ConditionType {
+  EXCELLENT
+  AVERAGE
+  DIRTY
+  VERY_DIRTY
+}
+
+enum FirstTimeType {
+  EXISTING_CLIENT
+  FIRST_VISIT
+  INITIAL_DEEP_CLEAN
+}
+
+enum PetLevel {
+  NO_PETS
+  ONE_PET
+  TWO_PLUS_PETS
+  HEAVY_SHEDDING
+}
+
+enum MarketArea {
+  FORT_MYERS
+  NAPLES
+  LUXURY_NAPLES
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String?
+  email         String     @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole   @default(STAFF)
+  accounts      Account[]
+  sessions      Session[]
+  estimates     Estimate[]
+  auditLogs     AuditLog[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Customer {
+  id        String     @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  zip       String?
+  notes     String?
+  estimates Estimate[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([lastName, firstName])
+  @@index([email])
+  @@index([phone])
+}
+
+model Estimate {
+  id             String         @id @default(cuid())
+  estimateNumber String         @unique
+  customerId     String
+  customer       Customer       @relation(fields: [customerId], references: [id])
+  createdById    String
+  createdBy      User           @relation(fields: [createdById], references: [id])
+  status         EstimateStatus @default(DRAFT)
+
+  // Property details
+  squareFootage Int
+  bedrooms      Int
+  bathrooms     Float
+  city          String
+  propertyType  String?
+
+  // Condition factors
+  occupancy     OccupancyType @default(COUPLE)
+  flooringType  FlooringType  @default(MOSTLY_TILE)
+  condition     ConditionType @default(AVERAGE)
+  petLevel      PetLevel      @default(NO_PETS)
+  firstTimeType FirstTimeType @default(FIRST_VISIT)
+
+  // Features
+  hasStairs     Boolean @default(false)
+  hasElevator   Boolean @default(false)
+  hasHomeOffice Boolean @default(false)
+  hasGym        Boolean @default(false)
+  hasTheaterRoom Boolean @default(false)
+  hasLanai      Boolean @default(false)
+  hasPoolBath   Boolean @default(false)
+
+  // Service
+  frequency  ServiceFrequency @default(BIWEEKLY)
+  marketArea MarketArea       @default(FORT_MYERS)
+
+  // Seasonal override
+  seasonalMultiplierOverride Float?
+
+  // Travel
+  distanceMiles Float?
+
+  // Calculated values
+  baseHours       Float
+  productionHours Float
+  basePrice       Float
+  travelFee       Float @default(0)
+  addOnTotal      Float @default(0)
+  finalPrice      Float
+  roundedPrice    Float
+
+  // Relationships
+  addOns    EstimateAddOn[]
+  proposals Proposal[]
+
+  // Metadata
+  expiresAt     DateTime?
+  notes         String?
+  internalNotes String?
+  convertedToJob Boolean   @default(false)
+  convertedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([createdById])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model EstimateAddOn {
+  id         String   @id @default(cuid())
+  estimateId String
+  estimate   Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  addOnKey   String
+  name       String
+  quantity   Int      @default(1)
+  unitPrice  Float
+  totalPrice Float
+  createdAt  DateTime @default(now())
+
+  @@index([estimateId])
+}
+
+model Proposal {
+  id           String    @id @default(cuid())
+  estimateId   String
+  estimate     Estimate  @relation(fields: [estimateId], references: [id])
+  sentAt       DateTime?
+  viewedAt     DateTime?
+  approvedAt   DateTime?
+  signatureUrl String?
+  pdfUrl       String?
+  emailSentTo  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([estimateId])
+}
+
+model PricingConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  type        String   @default("number")
+  category    String
+  label       String
+  description String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  oldValues Json?
+  newValues Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
